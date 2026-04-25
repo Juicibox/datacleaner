@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 from utils.cleaning import aplicar_transformacion, limpiar_texto
-from utils.mapping import cargar_mapa, guardar_mapa, aplicar_mapa
+from utils.mapping import cargar_mapa, aplicar_mapa
 from utils.merge import hacer_merge
 
 st.set_page_config(layout="wide")
@@ -92,20 +92,16 @@ if "df" in st.session_state:
     if "municipio_clean" in df.columns:
 
         st.subheader("Mapping Provincias")
+        st.caption("El mapeo se toma desde un diccionario interno (más rápido que CSV/JSON para esta app).")
 
         municipios = sorted(df["municipio_clean"].dropna().unique())
-
         map_df = cargar_mapa(municipios)
-
-        map_df = st.data_editor(map_df, num_rows="dynamic")
-
-        if st.button("Guardar mapa"):
-            guardar_mapa(map_df)
-            st.success("Mapa guardado")
+        st.dataframe(map_df)
 
         if st.button("Aplicar provincias"):
-            df = aplicar_mapa(df, map_df)
+            df = aplicar_mapa(df)
             st.session_state["df"] = df
+            st.success("Provincias aplicadas")
 
     # =========================
     # 7. MERGE
