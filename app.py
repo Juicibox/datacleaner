@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 import streamlit as st
 import pandas as pd
 
@@ -9,6 +11,32 @@ from utils.merge import hacer_merge
 st.set_page_config(layout="wide")
 st.title("Data Wrangling App")
 
+CACHE_PATH = Path(".cache/working_df.pkl")
+
+
+def guardar_df_en_cache(df: pd.DataFrame) -> None:
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    df.to_pickle(CACHE_PATH)
+
+
+def cargar_df_desde_cache():
+    if CACHE_PATH.exists():
+        return pd.read_pickle(CACHE_PATH)
+    return None
+
+
+def actualizar_df(df: pd.DataFrame) -> None:
+    st.session_state["df"] = df
+    guardar_df_en_cache(df)
+
+
+# Si existe cache y todavía no hay dataframe en memoria, lo recuperamos.
+if "df" not in st.session_state:
+    cached_df = cargar_df_desde_cache()
+    if cached_df is not None:
+        st.session_state["df"] = cached_df
+        st.session_state["source_file_id"] = "cache"
+
 # =========================
 # 1. CARGA
 # =========================
@@ -18,19 +46,15 @@ if file:
     file_id = (file.name, file.size)
 
     # Solo recargamos el DataFrame si cambia el archivo de origen.
-    # Así evitamos perder transformaciones al hacer clic en botones.
     if st.session_state.get("source_file_id") != file_id:
         if file.name.endswith(".csv"):
             df_uploaded = pd.read_csv(file)
         else:
             df_uploaded = pd.read_excel(file)
 
-        st.session_state["df"] = df_uploaded
+        actualizar_df(df_uploaded)
         st.session_state["source_file_id"] = file_id
 
-# =========================
-# 2. DATA PREVIEW
-# =========================
 if "df" in st.session_state:
 
     df = st.session_state["df"]
@@ -59,7 +83,7 @@ if "df" in st.session_state:
         else:
             for col in cols_transformacion:
                 df = aplicar_transformacion(df, col, accion)
-            st.session_state["df"] = df
+            actualizar_df(df)
             st.success("Transformación aplicada")
 
     # =========================
@@ -74,7 +98,7 @@ if "df" in st.session_state:
 
     if st.button("Concatenar"):
         df[new_col] = df[col1].astype(str) + " " + df[col2].astype(str)
-        st.session_state["df"] = df
+        actualizar_df(df)
 
     # =========================
     # 5. LIMPIEZA MUNICIPIO
@@ -85,7 +109,7 @@ if "df" in st.session_state:
 
     if st.button("Generar municipio_clean"):
         df["municipio_clean"] = df[col_mun].apply(limpiar_texto)
-        st.session_state["df"] = df
+        actualizar_df(df)
 
     # =========================
     # 6. MAPPING PROVINCIAS
@@ -104,8 +128,8 @@ if "df" in st.session_state:
             st.success("Mapa guardado")
 
         if st.button("Aplicar provincias"):
-            df = aplicar_mapa(df)
-            st.session_state["df"] = df
+            df = aplicar_mapa(df, map_df)
+            actualizar_df(df)
             st.success("Provincias aplicadas")
 
     # =========================
@@ -149,7 +173,7 @@ if "df" in st.session_state:
 
         if st.button("Aplicar merge"):
             df = hacer_merge(df, df_ref, col_df, col_ref, cols_add, how)
-            st.session_state["df"] = df
+            actualizar_df(df)
             st.success("Merge aplicado")
     else:
         st.info("No se encontró archivo externo. Sube uno o crea Data/loc.csv")
@@ -159,6 +183,16 @@ if "df" in st.session_state:
     # =========================
     st.subheader("Descargar")
 
+    st.markdown("**Quitar columnas antes de descargar (opcional)**")
+    cols_drop = st.multiselect("Columnas a eliminar", df.columns, key="drop_cols")
+    if st.button("Aplicar eliminación de columnas"):
+        if cols_drop:
+            df = df.drop(columns=cols_drop, errors="ignore")
+            actualizar_df(df)
+            st.success("Columnas eliminadas")
+        else:
+            st.info("No seleccionaste columnas para eliminar")
+
     st.markdown("**Vista previa final antes de descargar**")
     filas_preview = st.slider("Filas a previsualizar", min_value=5, max_value=100, value=10, step=5)
     st.dataframe(df.head(filas_preview))
@@ -166,3 +200,8 @@ if "df" in st.session_state:
     csv = df.to_csv(index=False).encode("utf-8")
 
     st.download_button("Descargar CSV", csv, "output.csv", "text/csv")
+
+    if st.button("Limpiar cache local"):
+        if CACHE_PATH.exists():
+            CACHE_PATH.unlink()
+        st.success("Cache eliminada")
