@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 
@@ -14,12 +15,18 @@ st.title("🧹 Data Wrangling App")
 file = st.file_uploader("Sube dataset principal", type=["csv", "xlsx"])
 
 if file:
-    if file.name.endswith(".csv"):
-        df = pd.read_csv(file)
-    else:
-        df = pd.read_excel(file)
+    file_id = (file.name, file.size)
 
-    st.session_state["df"] = df
+    # Solo recargamos el DataFrame si cambia el archivo de origen.
+    # Así evitamos perder transformaciones al hacer clic en botones.
+    if st.session_state.get("source_file_id") != file_id:
+        if file.name.endswith(".csv"):
+            df_uploaded = pd.read_csv(file)
+        else:
+            df_uploaded = pd.read_excel(file)
+
+        st.session_state["df"] = df_uploaded
+        st.session_state["source_file_id"] = file_id
 
 # =========================
 # 2. DATA PREVIEW
@@ -36,16 +43,24 @@ if "df" in st.session_state:
     # =========================
     st.subheader("Transformaciones")
 
-    col = st.selectbox("Columna", df.columns)
+    cols_transformacion = st.multiselect(
+        "Columnas",
+        df.columns,
+        default=[df.columns[0]] if len(df.columns) else []
+    )
     accion = st.selectbox(
         "Acción",
         ["Mayúsculas", "Minúsculas", "Capitalizar", "Eliminar espacios", "Entero", "Float"]
     )
 
     if st.button("Aplicar transformación"):
-        df = aplicar_transformacion(df, col, accion)
-        st.session_state["df"] = df
-        st.success("OK")
+        if not cols_transformacion:
+            st.warning("Selecciona al menos una columna.")
+        else:
+            for col in cols_transformacion:
+                df = aplicar_transformacion(df, col, accion)
+            st.session_state["df"] = df
+            st.success("Transformación aplicada")
 
     # =========================
     # 4. NUEVA COLUMNA
@@ -82,8 +97,7 @@ if "df" in st.session_state:
         municipios = sorted(df["municipio_clean"].dropna().unique())
 
         map_df = cargar_mapa(municipios)
-
-        map_df = st.data_editor(map_df, num_rows="dynamic")
+        map_df = st.data_editor(map_df, num_rows="dynamic", key="map_editor")
 
         if st.button("Guardar mapa"):
             guardar_mapa(map_df)
@@ -92,22 +106,42 @@ if "df" in st.session_state:
         if st.button("Aplicar provincias"):
             df = aplicar_mapa(df, map_df)
             st.session_state["df"] = df
+            st.success("Provincias aplicadas")
 
     # =========================
     # 7. MERGE
     # =========================
     st.subheader("Merge con archivo externo")
 
-    ref = st.file_uploader("Sube referencia", type=["csv", "xlsx"], key="ref")
+    ref = st.file_uploader("Sube referencia (opcional, por defecto Data/loc.csv)", type=["csv", "xlsx"], key="ref")
+
+    df_ref = None
 
     if ref:
         if ref.name.endswith(".csv"):
             df_ref = pd.read_csv(ref)
         else:
             df_ref = pd.read_excel(ref)
+        st.caption("Usando archivo de referencia subido manualmente.")
+    else:
+        default_ref_path = "Data/loc.csv"
+        if os.path.exists(default_ref_path):
+            df_ref = pd.read_csv(default_ref_path)
+            st.caption(f"Usando archivo de referencia por defecto: {default_ref_path}")
 
-        col_df = st.selectbox("Columna base", df.columns)
-        col_ref = st.selectbox("Columna referencia", df_ref.columns)
+    if df_ref is not None:
+        if "Municipio" in df_ref.columns and "municipio_clean" not in df_ref.columns:
+            df_ref["municipio_clean"] = df_ref["Municipio"].apply(limpiar_texto)
+
+        col_df_default = list(df.columns).index("municipio_clean") if "municipio_clean" in df.columns else 0
+
+        if "municipio_clean" in df_ref.columns:
+            col_ref_default = list(df_ref.columns).index("municipio_clean")
+        else:
+            col_ref_default = 0
+
+        col_df = st.selectbox("Columna base", df.columns, index=col_df_default)
+        col_ref = st.selectbox("Columna referencia", df_ref.columns, index=col_ref_default)
 
         cols_add = st.multiselect("Columnas a agregar", df_ref.columns)
 
@@ -117,11 +151,17 @@ if "df" in st.session_state:
             df = hacer_merge(df, df_ref, col_df, col_ref, cols_add, how)
             st.session_state["df"] = df
             st.success("Merge aplicado")
+    else:
+        st.info("No se encontró archivo externo. Sube uno o crea Data/loc.csv")
 
     # =========================
     # 8. DESCARGA
     # =========================
     st.subheader("Descargar")
+
+    st.markdown("**Vista previa final antes de descargar**")
+    filas_preview = st.slider("Filas a previsualizar", min_value=5, max_value=100, value=10, step=5)
+    st.dataframe(df.head(filas_preview))
 
     csv = df.to_csv(index=False).encode("utf-8")
 
