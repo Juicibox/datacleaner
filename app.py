@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 
@@ -108,16 +109,35 @@ if "df" in st.session_state:
     # =========================
     st.subheader("Merge con archivo externo")
 
-    ref = st.file_uploader("Sube referencia", type=["csv", "xlsx"], key="ref")
+    ref = st.file_uploader("Sube referencia (opcional, por defecto Data/loc.csv)", type=["csv", "xlsx"], key="ref")
+
+    df_ref = None
 
     if ref:
         if ref.name.endswith(".csv"):
             df_ref = pd.read_csv(ref)
         else:
             df_ref = pd.read_excel(ref)
+        st.caption("Usando archivo de referencia subido manualmente.")
+    else:
+        default_ref_path = "Data/loc.csv"
+        if os.path.exists(default_ref_path):
+            df_ref = pd.read_csv(default_ref_path)
+            st.caption(f"Usando archivo de referencia por defecto: {default_ref_path}")
 
-        col_df = st.selectbox("Columna base", df.columns)
-        col_ref = st.selectbox("Columna referencia", df_ref.columns)
+    if df_ref is not None:
+        if "Municipio" in df_ref.columns and "municipio_clean" not in df_ref.columns:
+            df_ref["municipio_clean"] = df_ref["Municipio"].apply(limpiar_texto)
+
+        col_df_default = list(df.columns).index("municipio_clean") if "municipio_clean" in df.columns else 0
+
+        if "municipio_clean" in df_ref.columns:
+            col_ref_default = list(df_ref.columns).index("municipio_clean")
+        else:
+            col_ref_default = 0
+
+        col_df = st.selectbox("Columna base", df.columns, index=col_df_default)
+        col_ref = st.selectbox("Columna referencia", df_ref.columns, index=col_ref_default)
 
         cols_add = st.multiselect("Columnas a agregar", df_ref.columns)
 
@@ -127,6 +147,8 @@ if "df" in st.session_state:
             df = hacer_merge(df, df_ref, col_df, col_ref, cols_add, how)
             st.session_state["df"] = df
             st.success("Merge aplicado")
+    else:
+        st.info("No se encontró archivo externo. Sube uno o crea Data/loc.csv")
 
     # =========================
     # 8. DESCARGA
