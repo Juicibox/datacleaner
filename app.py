@@ -6,7 +6,7 @@ from utils.mapping import cargar_mapa, guardar_mapa, aplicar_mapa
 from utils.merge import hacer_merge
 
 st.set_page_config(layout="wide")
-st.title("🧹 Data Wrangling App")
+st.title("Data Wrangling App")
 
 # =========================
 # 1. CARGA
