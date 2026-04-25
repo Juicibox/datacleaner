@@ -97,7 +97,11 @@ if "df" in st.session_state:
 
         municipios = sorted(df["municipio_clean"].dropna().unique())
         map_df = cargar_mapa(municipios)
-        st.dataframe(map_df)
+        map_df = st.data_editor(map_df, num_rows="dynamic", key="map_editor")
+
+        if st.button("Guardar mapa"):
+            guardar_mapa(map_df)
+            st.success("Mapa guardado")
 
         if st.button("Aplicar provincias"):
             df = aplicar_mapa(df)
