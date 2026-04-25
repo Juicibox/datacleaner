@@ -14,12 +14,18 @@ st.title("🧹 Data Wrangling App")
 file = st.file_uploader("Sube dataset principal", type=["csv", "xlsx"])
 
 if file:
-    if file.name.endswith(".csv"):
-        df = pd.read_csv(file)
-    else:
-        df = pd.read_excel(file)
+    file_id = (file.name, file.size)
 
-    st.session_state["df"] = df
+    # Solo recargamos el DataFrame si cambia el archivo de origen.
+    # Así evitamos perder transformaciones al hacer clic en botones.
+    if st.session_state.get("source_file_id") != file_id:
+        if file.name.endswith(".csv"):
+            df_uploaded = pd.read_csv(file)
+        else:
+            df_uploaded = pd.read_excel(file)
+
+        st.session_state["df"] = df_uploaded
+        st.session_state["source_file_id"] = file_id
 
 # =========================
 # 2. DATA PREVIEW
@@ -36,16 +42,24 @@ if "df" in st.session_state:
     # =========================
     st.subheader("Transformaciones")
 
-    col = st.selectbox("Columna", df.columns)
+    cols_transformacion = st.multiselect(
+        "Columnas",
+        df.columns,
+        default=[df.columns[0]] if len(df.columns) else []
+    )
     accion = st.selectbox(
         "Acción",
         ["Mayúsculas", "Minúsculas", "Capitalizar", "Eliminar espacios", "Entero", "Float"]
     )
 
     if st.button("Aplicar transformación"):
-        df = aplicar_transformacion(df, col, accion)
-        st.session_state["df"] = df
-        st.success("OK")
+        if not cols_transformacion:
+            st.warning("Selecciona al menos una columna.")
+        else:
+            for col in cols_transformacion:
+                df = aplicar_transformacion(df, col, accion)
+            st.session_state["df"] = df
+            st.success("Transformación aplicada")
 
     # =========================
     # 4. NUEVA COLUMNA
@@ -122,6 +136,10 @@ if "df" in st.session_state:
     # 8. DESCARGA
     # =========================
     st.subheader("Descargar")
+
+    st.markdown("**Vista previa final antes de descargar**")
+    filas_preview = st.slider("Filas a previsualizar", min_value=5, max_value=100, value=10, step=5)
+    st.dataframe(df.head(filas_preview))
 
     csv = df.to_csv(index=False).encode("utf-8")
 
